@@ -3,4 +3,3 @@ uvicorn
 httpx
 gspread
 google-auth-oauthlib
-json
