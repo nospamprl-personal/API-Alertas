@@ -102,11 +102,13 @@ async def send_notifications(contacts_list: list = []):
             except httpx.RequestError as e:
                 print(f"❌ Error enviando a {contact['phone']}: {e}")
 
-# --- RUTAS DE LA API (sin cambios) ---
+# --- RUTAS DE LA API ---
+
 @app.get("/uptimerobot")
 async def uptime_check():
-    if request.method == "GET":
-        return "OK", 200  # Para UptimeRobot o pruebas básicas
+    # Esta función no necesita "request". Simplemente devuelve una respuesta directa.
+    return Response(content="✅ Servidor activo", media_type="text/plain")
+
 
 @app.post("/{user}")
 async def handle_alert(user: str, request: Request, background_tasks: BackgroundTasks):
