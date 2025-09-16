@@ -18,6 +18,7 @@ CACHE_DURATION_SECONDS = 300 # 5 minutos
 last_cache_time = 0
 
 # --- LÓGICA PARA CONECTARSE A GOOGLE SHEETS ---
+# --- LÓGICA PARA CONECTARSE A GOOGLE SHEETS (CON CORRECCIÓN FINAL) ---
 def get_contacts_from_sheet():
     global last_cache_time, cached_contacts
     
@@ -27,14 +28,17 @@ def get_contacts_from_sheet():
 
     print("🔄 Actualizando contactos desde Google Sheets...")
     try:
-        # Lee la variable de entorno que ahora sabemos que funciona
         creds_json_string = os.environ.get("GOOGLE_CREDS_JSON")
         if not creds_json_string:
             raise ValueError("La variable de entorno GOOGLE_CREDS_JSON no está definida.")
         
-        # Convierte el string JSON a un diccionario de Python
         creds_dict = json.loads(creds_json_string)
         
+        # --- LÍNEA DE CORRECCIÓN DEFINITIVA ---
+        # Arregla los saltos de línea corruptos en la clave privada.
+        creds_dict['private_key'] = creds_dict['private_key'].replace('\\n', '\n')
+        # ------------------------------------
+
         scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = gspread.authorize(creds)
