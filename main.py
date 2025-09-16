@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request, Response, BackgroundTasks
 from urllib.parse import quote
 from google.oauth2.service_account import Credentials
 
+
 # --- CONFIGURACIÓN ---
 app = FastAPI()
 port = int(os.environ.get("PORT", 8000))
