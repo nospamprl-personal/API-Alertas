@@ -1,63 +1,47 @@
-import traceback
 import os
 import asyncio
 import httpx
 import gspread
 import time
 import json
+import traceback
 from fastapi import FastAPI, Request, Response, BackgroundTasks
 from urllib.parse import quote
 from google.oauth2.service_account import Credentials
 
-
 # --- CONFIGURACIÓN ---
 app = FastAPI()
-port = int(os.environ.get("PORT", 8000))
 
 # --- CACHÉ SIMPLE PARA LOS CONTACTOS ---
 cached_contacts = {}
 CACHE_DURATION_SECONDS = 300 # 5 minutos
 last_cache_time = 0
 
-# --- LÓGICA PARA CONECTARSE A GOOGLE SHEETS (ACTUALIZADA) ---
-# --- LÓGICA PARA CONECTARSE A GOOGLE SHEETS (CORREGIDA) ---
+# --- LÓGICA PARA CONECTARSE A GOOGLE SHEETS ---
 def get_contacts_from_sheet():
     global last_cache_time, cached_contacts
-
-    # La lógica del caché no cambia
+    
     if time.time() - last_cache_time < CACHE_DURATION_SECONDS:
+        print("✅ Usando contactos desde caché.")
         return cached_contacts
 
-    print("--- INICIANDO DIAGNÓSTICO DE GOOGLE SHEETS ---")
+    print("🔄 Actualizando contactos desde Google Sheets...")
     try:
-        # 1. Verificamos si la variable de entorno existe
-        print("1. Intentando leer la variable de entorno 'GOOGLE_CREDS_JSON'...")
+        # Lee la variable de entorno que ahora sabemos que funciona
         creds_json_string = os.environ.get("GOOGLE_CREDS_JSON")
-
         if not creds_json_string:
-            raise ValueError("¡ERROR CRÍTICO! La variable de entorno no fue encontrada por la aplicación.")
-
-        # 2. Mostramos información sobre la variable leída
-        print("2. Variable leída con éxito.")
-        print(f"   - Tipo de dato: {type(creds_json_string)}")
-        print(f"   - Longitud del string: {len(creds_json_string)} caracteres")
-        print(f"   - Primeros 50 caracteres: {creds_json_string[:50]}...")
+            raise ValueError("La variable de entorno GOOGLE_CREDS_JSON no está definida.")
         
-        # 3. Intentamos convertir el string a un diccionario JSON
-        print("3. Intentando decodificar el string a JSON...")
+        # Convierte el string JSON a un diccionario de Python
         creds_dict = json.loads(creds_json_string)
-        print("4. ¡Éxito! El JSON fue decodificado correctamente.")
-
-        # El resto de la lógica sigue igual
+        
         scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = gspread.authorize(creds)
-        
-        # ... (el resto de la función no cambia)
 
         sheet = client.open("Control API Alertas").worksheet("Control")
         records = sheet.get_all_records()
-        
+
         all_contacts = {}
         for row in records:
             is_active = str(row.get("active", "FALSE")).upper() == 'TRUE'
@@ -66,6 +50,7 @@ def get_contacts_from_sheet():
                 if user:
                     if user not in all_contacts:
                         all_contacts[user] = []
+                    
                     all_contacts[user].append({
                         "phone": str(row.get("phone")),
                         "apikey": str(row.get("apikey")),
@@ -74,20 +59,16 @@ def get_contacts_from_sheet():
         
         cached_contacts = all_contacts
         last_cache_time = time.time()
-        print(f"5. Contactos actualizados desde Google Sheets.")
+        print(f"✅ Contactos actualizados. Usuarios activos cargados: {list(cached_contacts.keys())}")
         return cached_contacts
 
     except Exception as e:
-        # Esta parte ahora nos dará el error exacto y la línea donde ocurre
-        print("\n❌❌❌ OCURRIÓ UN ERROR DETALLADO ❌❌❌")
+        print(f"❌ ERROR al leer Google Sheets: {e}")
         traceback.print_exc()
-        print("--- FIN DEL DIAGNÓSTICO --- \n")
         return cached_contacts
-    
-    
-# --- FUNCIÓN DE ENVÍO (sin cambios) ---
+
+# --- FUNCIÓN DE ENVÍO ---
 async def send_notifications(contacts_list: list = []):
-    """Envía mensajes de WhatsApp en secuencia con una pausa."""
     print('🚨 Activando envío de mensajes...')
     async with httpx.AsyncClient() as client:
         for contact in contacts_list:
@@ -103,27 +84,12 @@ async def send_notifications(contacts_list: list = []):
                 print(f"❌ Error enviando a {contact['phone']}: {e}")
 
 # --- RUTAS DE LA API ---
-
 @app.get("/uptimerobot")
 async def uptime_check():
-    # Esta función no necesita "request". Simplemente devuelve una respuesta directa.
     return Response(content="✅ Servidor activo", media_type="text/plain")
-
-# --- AÑADE ESTA NUEVA FUNCIÓN AQUÍ ---
-@app.get("/testenv")
-async def test_environment_variable():
-    """
-    Una ruta de prueba para leer la variable de entorno simple.
-    """
-    mensaje = os.environ.get("MENSAJE_PRUEBA", "La variable NO fue encontrada.")
-    return {"mensaje_de_prueba": mensaje}
-# ------------------------------------
 
 @app.post("/{user}")
 async def handle_alert(user: str, request: Request, background_tasks: BackgroundTasks):
-    """
-    Responde a Alexa y ejecuta el envío de mensajes en segundo plano.
-    """
     all_contacts = get_contacts_from_sheet()
     contacts_to_send = all_contacts.get(user)
 
@@ -143,14 +109,6 @@ async def handle_alert(user: str, request: Request, background_tasks: Background
 
     if request_type == 'LaunchRequest' or (request_type == 'IntentRequest' and intent_name == 'ayuda'):
         background_tasks.add_task(send_notifications, contacts_to_send)
-        return {"version": "1.0", "response": {"outputSpeech": {"type": "PlainText", "text": f"Entendido {user}, ya estoy pidiendo ayuda."}, "shouldEndSession": True}}
+        return {"version": "1.o", "response": {"outputSpeech": {"type": "PlainText", "text": f"Entendido {user}, ya estoy pidiendo ayuda."}, "shouldEndSession": True}}
     else:
-        return {"version": "1.0", "response": {"outputSpeech": {"type": "PlainText", "text": "No entendí tu solicitud. Intenta decir: Alexa, pide ayuda."}, "shouldEndSession": True}}
-
-# Para pruebas locales
-if __name__ == "__main__":
-    if not os.environ.get("GOOGLE_CREDS_JSON"):
-        print("ADVERTENCIA: La variable GOOGLE_CREDS_JSON no está configurada. La API no podrá leer de Google Sheets.")
-    
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=port)
+        return {"version": "1.o", "response": {"outputSpeech": {"type": "PlainText", "text": "No entendí tu solicitud. Intenta decir: Alexa, pide ayuda."}, "shouldEndSession": True}}
