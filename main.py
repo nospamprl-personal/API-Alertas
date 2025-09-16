@@ -1,3 +1,4 @@
+import traceback
 import os
 import asyncio
 import httpx
@@ -21,42 +22,50 @@ last_cache_time = 0
 # --- LÓGICA PARA CONECTARSE A GOOGLE SHEETS (ACTUALIZADA) ---
 # --- LÓGICA PARA CONECTARSE A GOOGLE SHEETS (CORREGIDA) ---
 def get_contacts_from_sheet():
-    """
-    Se conecta a Google Sheets, lee los datos y filtra solo los contactos
-    activos para transformarlos en un diccionario.
-    """
     global last_cache_time, cached_contacts
-    
+
+    # La lógica del caché no cambia
     if time.time() - last_cache_time < CACHE_DURATION_SECONDS:
-        print("✅ Usando contactos desde caché.")
         return cached_contacts
 
-    print("🔄 Actualizando contactos desde Google Sheets...")
+    print("--- INICIANDO DIAGNÓSTICO DE GOOGLE SHEETS ---")
     try:
+        # 1. Verificamos si la variable de entorno existe
+        print("1. Intentando leer la variable de entorno 'GOOGLE_CREDS_JSON'...")
         creds_json_string = os.environ.get("GOOGLE_CREDS_JSON")
+
         if not creds_json_string:
-            raise ValueError("La variable de entorno GOOGLE_CREDS_JSON no está definida.")
+            raise ValueError("¡ERROR CRÍTICO! La variable de entorno no fue encontrada por la aplicación.")
+
+        # 2. Mostramos información sobre la variable leída
+        print("2. Variable leída con éxito.")
+        print(f"   - Tipo de dato: {type(creds_json_string)}")
+        print(f"   - Longitud del string: {len(creds_json_string)} caracteres")
+        print(f"   - Primeros 50 caracteres: {creds_json_string[:50]}...")
         
-        # *** CAMBIO IMPORTANTE: Usamos json.loads() en lugar de eval() ***
+        # 3. Intentamos convertir el string a un diccionario JSON
+        print("3. Intentando decodificar el string a JSON...")
         creds_dict = json.loads(creds_json_string)
-        
+        print("4. ¡Éxito! El JSON fue decodificado correctamente.")
+
+        # El resto de la lógica sigue igual
         scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = gspread.authorize(creds)
+        
+        # ... (el resto de la función no cambia)
 
         sheet = client.open("Control API Alertas").worksheet("Control")
         records = sheet.get_all_records()
-
+        
         all_contacts = {}
         for row in records:
             is_active = str(row.get("active", "FALSE")).upper() == 'TRUE'
-
             if is_active:
                 user = row.get("user")
                 if user:
                     if user not in all_contacts:
                         all_contacts[user] = []
-                    
                     all_contacts[user].append({
                         "phone": str(row.get("phone")),
                         "apikey": str(row.get("apikey")),
@@ -65,12 +74,17 @@ def get_contacts_from_sheet():
         
         cached_contacts = all_contacts
         last_cache_time = time.time()
-        print(f"✅ Contactos actualizados. Usuarios activos cargados: {list(cached_contacts.keys())}")
+        print(f"5. Contactos actualizados desde Google Sheets.")
         return cached_contacts
 
     except Exception as e:
-        print(f"❌ ERROR al leer Google Sheets: {e}")
+        # Esta parte ahora nos dará el error exacto y la línea donde ocurre
+        print("\n❌❌❌ OCURRIÓ UN ERROR DETALLADO ❌❌❌")
+        traceback.print_exc()
+        print("--- FIN DEL DIAGNÓSTICO --- \n")
         return cached_contacts
+    
+    
 # --- FUNCIÓN DE ENVÍO (sin cambios) ---
 async def send_notifications(contacts_list: list = []):
     """Envía mensajes de WhatsApp en secuencia con una pausa."""
@@ -91,7 +105,8 @@ async def send_notifications(contacts_list: list = []):
 # --- RUTAS DE LA API (sin cambios) ---
 @app.get("/uptimerobot")
 async def uptime_check():
-    return Response(content="✅ Servidor activo", media_type="text/plain")
+    if request.method == "GET":
+        return "OK", 200  # Para UptimeRobot o pruebas básicas
 
 @app.post("/{user}")
 async def handle_alert(user: str, request: Request, background_tasks: BackgroundTasks):
