@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+httpx
+gspread
+google-auth-oauthlib
