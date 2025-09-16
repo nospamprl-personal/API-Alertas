@@ -109,6 +109,15 @@ async def uptime_check():
     # Esta función no necesita "request". Simplemente devuelve una respuesta directa.
     return Response(content="✅ Servidor activo", media_type="text/plain")
 
+# --- AÑADE ESTA NUEVA FUNCIÓN AQUÍ ---
+@app.get("/testenv")
+async def test_environment_variable():
+    """
+    Una ruta de prueba para leer la variable de entorno simple.
+    """
+    mensaje = os.environ.get("MENSAJE_PRUEBA", "La variable NO fue encontrada.")
+    return {"mensaje_de_prueba": mensaje}
+# ------------------------------------
 
 @app.post("/{user}")
 async def handle_alert(user: str, request: Request, background_tasks: BackgroundTasks):
