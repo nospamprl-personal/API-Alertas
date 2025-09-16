@@ -3,6 +3,7 @@ import asyncio
 import httpx
 import gspread
 import time
+import json
 from fastapi import FastAPI, Request, Response, BackgroundTasks
 from urllib.parse import quote
 from google.oauth2.service_account import Credentials
@@ -18,6 +19,7 @@ CACHE_DURATION_SECONDS = 300 # 5 minutos
 last_cache_time = 0
 
 # --- LÓGICA PARA CONECTARSE A GOOGLE SHEETS (ACTUALIZADA) ---
+# --- LÓGICA PARA CONECTARSE A GOOGLE SHEETS (CORREGIDA) ---
 def get_contacts_from_sheet():
     """
     Se conecta a Google Sheets, lee los datos y filtra solo los contactos
@@ -25,31 +27,28 @@ def get_contacts_from_sheet():
     """
     global last_cache_time, cached_contacts
     
-    # Comprueba si el caché es reciente
     if time.time() - last_cache_time < CACHE_DURATION_SECONDS:
         print("✅ Usando contactos desde caché.")
         return cached_contacts
 
     print("🔄 Actualizando contactos desde Google Sheets...")
     try:
-        creds_json = os.environ.get("GOOGLE_CREDS_JSON")
-        if not creds_json:
+        creds_json_string = os.environ.get("GOOGLE_CREDS_JSON")
+        if not creds_json_string:
             raise ValueError("La variable de entorno GOOGLE_CREDS_JSON no está definida.")
         
-        creds_dict = eval(creds_json)
+        # *** CAMBIO IMPORTANTE: Usamos json.loads() en lugar de eval() ***
+        creds_dict = json.loads(creds_json_string)
         
         scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = gspread.authorize(creds)
 
-        # *** CAMBIO 1: Se actualizó el nombre de la hoja y la pestaña ***
         sheet = client.open("Control API Alertas").worksheet("Control")
         records = sheet.get_all_records()
 
         all_contacts = {}
         for row in records:
-            # *** CAMBIO 2: Se añade la condición para filtrar por la columna 'active' ***
-            # Convierte a string y mayúsculas para manejar 'TRUE', 'true', etc.
             is_active = str(row.get("active", "FALSE")).upper() == 'TRUE'
 
             if is_active:
@@ -63,7 +62,6 @@ def get_contacts_from_sheet():
                         "apikey": str(row.get("apikey")),
                         "message": row.get("message")
                     })
-            # Si no es 'TRUE', la fila simplemente se ignora.
         
         cached_contacts = all_contacts
         last_cache_time = time.time()
@@ -73,7 +71,6 @@ def get_contacts_from_sheet():
     except Exception as e:
         print(f"❌ ERROR al leer Google Sheets: {e}")
         return cached_contacts
-
 # --- FUNCIÓN DE ENVÍO (sin cambios) ---
 async def send_notifications(contacts_list: list = []):
     """Envía mensajes de WhatsApp en secuencia con una pausa."""
